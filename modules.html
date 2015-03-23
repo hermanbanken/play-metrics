@@ -28,6 +28,7 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
         position: fixed;
         left: 10px;
         top: 10px;
+        z-index: -10;
     }
 
     #loading {
@@ -41,9 +42,9 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
 
 </style>
 <form>
-    <label id="hoverModule">Focus: &lt;hover to highlight&gt;</label>
+    <label id="hoverModule">Focus: &lt;click layer to highlight&gt;</label>
     <br>
-    <label id="hoverCommit">Commit: &lt;hover to show&gt;</label>
+    <label id="hoverCommit">Commit: &lt;click layer to show changes&gt;</label>
 </form>
 <div id="loading">Loading...<br /><small>Downloading and converting 5000+ commits</small></div>
 <script src="http://d3js.org/d3.v3.min.js"></script>
@@ -174,24 +175,37 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
                     return Math.max(1, y(d.y0) - y(d.y0 + d.y));
                 })
                 .on('mouseover', function(d, commit_index, layer_index){
-                    hoverModule.textContent = "Focus: "+ modules[layer_index];
+                    commit_index-=1;
+                    var module_name = modules[layer_index];
+                    var changes = commits.slice(commit_index*limit-1, (commit_index+1)*limit);
+                    var locs = changes.map(function(c){ return loc(c.sha, module_name); });
+                    
+                    hoverModule.textContent = "Focus: "+ module_name + "; LOC: "+locs[0]+" -> "+locs.slice(-1)[0];
                     if(window.limit < 2)
                         hoverCommit.textContent = "Commit: "+ 
                             commits_reduced[commit_index].sha.substr(0, 8) + " " +  
                             commits_reduced[commit_index].message;
                     else
-                        hoverCommit.innerHTML = "Commits: "+commits
-                            .slice(commit_index*limit, (commit_index+1)*limit)
-                            .map(function(commit){
-                                return commit.sha.substr(0, 8) + " " + commit.message;
+                        hoverCommit.innerHTML = "Commits: <table>"+ 
+                            changes.slice(1).map(function(commit, i){
+                                return "<tr><td>"+commit.sha.substr(0, 8) + "</td><td>"+
+                                       (loc(commit.sha, module_name) - loc(changes[i].sha, module_name)) +
+                                       "</td><td>" + shorten(commit.message, 50) + "</td></tr>";
                             })
-                            .reduce(function(){ return arguments[0] + "\n<br>" + arguments[1]; }, "");
+                            .reduce(function(){ return arguments[0] + "\n" + arguments[1]; }, "") + "</table>";
                     layer.transition().style("opacity", function(_d, i){
-                        return i == d.layer ? 1 : 0.6;
+                        return i == layer_index ? 1 : 0.6;
+                    });
+                    rect.style("fill", function(_d, ci, li){
+                        return ci == commit_index+1 && layer_index == li ? "black" : color(li%20);
                     });
                 })
                 .on('mouseout', function(){
-                    layer.transition().style("opacity", 1);
+                    layer.transition()
+                        .style("opacity", 1)
+                        .style("fill", function (d, i) {
+                            return color(i%20);
+                        });
                 });
 
         svg.append("g")
@@ -201,6 +215,18 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
 
         var l = document.getElementById("loading");
         l.parentNode.removeChild(l);
+    }
+
+    function loc(sha, module_name){
+        var c = metrics.modules[sha];
+        return c && c[module_name] && c[module_name].loc || 0;
+    }
+
+    function shorten(s, l){
+        if(s.length > l){
+            return s.substr(0, l-3) + "...";
+        }
+        return s;
     }
 
     // Inspired by Lee Byron's test data generator.
