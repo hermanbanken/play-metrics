@@ -26,16 +26,24 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
 
     form {
         position: absolute;
-        right: 10px;
+        left: 10px;
         top: 10px;
+    i}
+
+    #loading {
+        position: absolute;
+        top: 2cm;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 4em;
     }
 
 </style>
 <form>
     <label id="hoverModule">Focus: &lt;hover&gt;</label>
-    <label><input type="radio" name="mode" value="grouped"> Grouped</label>
-    <label><input type="radio" name="mode" value="stacked" checked> Stacked</label>
 </form>
+<div id="loading">Loading...<br /><small>Downloading and converting 5000+ commits</small></div>
 <script src="http://d3js.org/d3.v3.min.js"></script>
 <script>
     var xhr = new XMLHttpRequest();
@@ -181,43 +189,8 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
                 .attr("transform", "translate(0," + height + ")")
                 .call(xAxis);
 
+        var l = document.getElementById("loading");
+        l.parentNode.removeChild(l);
     }
-//    d3.selectAll("input").on("change", change);
-
-//    var timeout = setTimeout(function() {
-//        d3.select("input[value=\"grouped\"]").property("checked", true).each(change);
-//    }, 2000);
-
-    function change() {
-        clearTimeout(timeout);
-//        if (this.value === "grouped") transitionGrouped();
-//        else transitionStacked();
-    }
-
-//    function transitionGrouped() {
-//        y.domain([0, yGroupMax]);
-//
-//        rect.transition()
-//                .duration(500)
-//                .delay(function(d, i) { return i * 10; })
-//                .attr("x", function(d, i, j) { return x(d.x) + x.rangeBand() / n * j; })
-//                .attr("width", x.rangeBand() / n)
-//                .transition()
-//                .attr("y", function(d) { return y(d.y); })
-//                .attr("height", function(d) { return height - y(d.y); });
-//    }
-//
-//    function transitionStacked() {
-//        y.domain([0, yStackMax]);
-//
-//        rect.transition()
-//                .duration(500)
-//                .delay(function(d, i) { return i * 10; })
-//                .attr("y", function(d) { return y(d.y0 + d.y); })
-//                .attr("height", function(d) { return y(d.y0) - y(d.y0 + d.y); })
-//                .transition()
-//                .attr("x", function(d) { return x(d.x); })
-//                .attr("width", x.rangeBand());
-//    }
 
 </script>
