@@ -40,6 +40,17 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
         font-size: 4em;
     }
 
+    table {
+        border-collapse: collapse;
+    }
+
+    table, th, td {
+        border: 1px solid black;
+    }
+    th, td {
+        padding: 0 2px;
+    }
+
 </style>
 <form>
     <label id="hoverModule">Focus: &lt;click layer to highlight&gt;</label>
@@ -87,7 +98,7 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
                 layers[module_name] = layers[module_name] || modules.push(module_name) && [];
                 layers[module_name][c.x] = {
                     x: c.x,
-                    y: Math.sqrt(cm[module_name].loc)
+                    y: cm[module_name].loc, // Math.sqrt(cm[module_name].loc)
                 };
             })
         });
@@ -122,8 +133,7 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
         m = layers.reduce(function(p, c){ return Math.max(p, c.length) }, 0);
         yGroupMax = d3.max(layers, function(layer) { return d3.max(layer, function(d) { return d.y; }); }),
         yStackMax = d3.max(layers, function(layer) { return d3.max(layer, function(d) { return d.y0 + d.y; }); });
-        console.log("D3.js run");
-    
+        
         run();
     }
 
@@ -135,7 +145,7 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
         yStackMax;
 
     function run() {
-        var margin = {top: 40, right: 10, bottom: 20, left: 10},
+        var margin = {top: 40, right: 50, bottom: 50, left: 10},
                 width = 1400 - margin.left - margin.right,
                 height = 800 - margin.top - margin.bottom;
 
@@ -154,6 +164,18 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
                 .tickSize(0)
                 .tickPadding(6)
                 .orient("bottom");
+
+        var yAxis = d3.svg.axis()
+                .scale(y)
+                .tickSize(0)
+                .tickPadding(6)
+                .tickFormat(function (d) {
+                  if ((d / 1000) >= 1) {
+                    d = d / 1000 + "k";
+                  }
+                  return d + " LOC";
+                })
+                .orient("right");
 
         var svg = d3.select("body").append("svg")
                 .attr("width", width + margin.left + margin.right)
@@ -241,9 +263,10 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
         });
 
         var histvals = lochist.map(function(l){ return l.y; });
-        var histscale = d3.scale.linear()
-                    .domain([d3.min(histvals), d3.max(histvals)])
-                    .range([0, 150])
+        var histscale = d3.scale.sqrt()
+                    .domain([0.01,d3.max(histvals.map(function(v){ return Math.abs(v); }))])
+//                    .domain([d3.min(histvals), d3.max(histvals)])
+                    .range([0, 50])
 
         var hist = svg.selectAll("rect.hist")
                 .data(lochist)
@@ -252,10 +275,13 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
                 .classed("hist", true)
             hist.attr("width", 2)
                 .attr("height", function(d,i) {
-                  return Math.abs(histscale(0) - histscale(d.y));
+                  return Math.abs(d.y) <= 1 ? 0 : histscale(Math.abs(d.y));
+                 // return Math.abs(histscale(0) - histscale(d.y));
                 })
                 .attr("y", function(d) {
-                  return height + (d.y < 0 ? 0 : (histscale(0) - histscale(d.y)));
+                  if(d.y > 0)
+                    return height - 1 * (Math.abs(d.y) <= 1 ? 0 : histscale(Math.abs(d.y)));
+                  return height;///2 + (d.y < 0 ? -1 : 1) * histscale(Math.min(1, Math.abs(d.y)));
                 })
                 .style("fill-opacity", 1)
                 .style("fill", function(d){
@@ -273,6 +299,10 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
                 .attr("class", "x axis")
                 .attr("transform", "translate(0," + height + ")")
                 .call(xAxis)
+        svg.append("g")
+                .attr("class", "y axis")
+                .attr("transform", "translate("+(width+5)+",0)")
+                .call(yAxis)
 
         var l = document.getElementById("loading");
         l.parentNode.removeChild(l);
@@ -292,6 +322,7 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
     }
 
     function shorten(s, l){
+        s = s.replace("pull request", "pr");
         if(s.length > l){
             return s.substr(0, l-3) + "...";
         }
