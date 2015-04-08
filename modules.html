@@ -28,7 +28,7 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
         position: fixed;
         left: 10px;
         top: 10px;
-        z-index: -10;
+        z-index: 10;
     }
 
     #loading {
@@ -48,87 +48,100 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
 </form>
 <div id="loading">Loading...<br /><small>Downloading and converting 5000+ commits</small></div>
 <script src="http://d3js.org/d3.v3.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
 <script>
-    var xhr = new XMLHttpRequest();
-    xhr.onreadystatechange = function(){
-        if(this.readyState == 4 && this.status == 200){
-            var metrics;
-            window.metrics = metrics = JSON.parse(this.responseText);
-            var commits = window.commits = Object.keys(metrics.commits).map(function(k){
-                return metrics.commits[k];
-            }).sort(function(a,b){ return b.x - a.x });
+    $.get("merges.csv").done(function(merges){
+        $.getJSON("metricscache.json").done(function(metrics){
+            process(merges.split("\n"),metrics);
+        })
+    });
 
-            commits.forEach(function(c){
-                c.x = commits.length - c.x;
+    function process(merges, metrics){
+        window.metrics = metrics;
+        var commits = window.commits = Object.keys(metrics.commits).map(function(k){
+            return metrics.commits[k];
+        }).sort(function(a,b){ return b.x - a.x });
+
+        window.commits = commits = merges.filter(function(m){ return m.length; }).map(function(row, i, l){
+            var p = row.split(" ",2);
+            var message = row.substr(52);
+            return {
+                x: l.length - i - 1,
+                sha: p[0],
+                date: new Date(p[1]*1000),
+                unix: p[1],
+                message: message
+            };
+        });
+
+        var modules = window.modules = [];
+
+        // For each commit, add module stats to layers object
+        var layers = {};
+        commits.reverse().forEach(function(c){
+            var cm = metrics.modules[c.sha];
+            if(!cm){
+                return;
+            }
+            Object.keys(cm).forEach(function(module_name){
+                layers[module_name] = layers[module_name] || modules.push(module_name) && [];
+                layers[module_name][c.x] = {
+                    x: c.x,
+                    y: Math.sqrt(cm[module_name].loc)
+                };
+            })
+        });
+
+        console.log("These modules:", Object.keys(layers));
+
+        // Fill gaps
+        modules.forEach(function(name, k, all){
+            for(var i = 0; i < commits.length; i++){
+                layers[name][i] = layers[name][i] || { x: i, y: 0 };
+                layers[name][i].y0 = k > 0 ? (layers[all[k-1]][i].y0 + layers[all[k-1]][i].y) : 0;
+                layers[name][i].date = commits[i].date;
+            }
+        });
+
+        // Flatten layer object to array & limit density
+        var limit = window.limit = 6;
+        window.commits_reduced = window.limit > 1 ? commits.filter(function(a, i){ return i % limit == 0; }) : commits;
+        window.layers = layers = Object.keys(layers).map(function(m){
+            var lIndex = modules.indexOf(m);
+            // Reduce massive amount, as JS is not capable enough...
+            var la = layers[m];
+            if(limit >= 2)
+                la = la.filter(function(a, i){ return i % limit == 0; });
+            return la.map(function(o){
+                return {x: o.x/limit, y: o.y, y0: o.y0, layer: lIndex, date: o.date };
             });
+        });
 
-            var modules = window.modules = [];
+        // Find bounds
+        n = layers.length;
+        m = layers.reduce(function(p, c){ return Math.max(p, c.length) }, 0);
+        yGroupMax = d3.max(layers, function(layer) { return d3.max(layer, function(d) { return d.y; }); }),
+        yStackMax = d3.max(layers, function(layer) { return d3.max(layer, function(d) { return d.y0 + d.y; }); });
+        console.log("D3.js run");
+    
+        run();
+    }
 
-            // For each commit, add module stats to layers object
-            var layers = {};
-            commits.forEach(function(c){
-                var cm = metrics.modules[c.sha];
-                if(!cm){
-                    return;
-                }
-                Object.keys(cm).forEach(function(module_name){
-                    layers[module_name] = layers[module_name] || modules.push(module_name) && [];
-                    layers[module_name][c.x] = {
-                        x: c.x,
-                        y: Math.sqrt(cm[module_name].loc)
-                    };
-                })
-            });
-
-            console.log("These modules:", Object.keys(layers));
-
-            // Fill gaps
-            modules.forEach(function(name, k, all){
-                for(var i = 0; i < commits.length; i++){
-                    layers[name][i] = layers[name][i] || { x: i, y: 0 };
-                    layers[name][i].y0 = k > 0 ? (layers[all[k-1]][i].y0 + layers[all[k-1]][i].y) : 0;
-                }
-            });
-
-            // Flatten layer object to array & limit density
-            var limit = window.limit = 20;
-            window.commits_reduced = commits.filter(function(a, i){ return i % limit == 0; });
-            window.layers = layers = Object.keys(layers).map(function(m){
-                var lIndex = modules.indexOf(m);
-                // Reduce massive amount, as JS is not capable enough...
-                if(limit < 2) 
-                    return layers[m];
-                return layers[m].filter(function(a, i){ return i % limit == 0; }).map(function(o){
-                    return {x: o.x/limit, y: o.y, y0: o.y0, layer: lIndex};
-                });
-            });
-
-            // Find bounds
-            n = layers.length;
-            m = layers.reduce(function(p, c){ return Math.max(p, c.length) }, 0);
-            yGroupMax = d3.max(layers, function(layer) { return d3.max(layer, function(d) { return d.y; }); }),
-            yStackMax = d3.max(layers, function(layer) { return d3.max(layer, function(d) { return d.y0 + d.y; }); });
-            run();
-        }
-    };
-    xhr.open("GET", "metricscache.json");
-    xhr.send();
-
-        var n = 4, // number of layers
-            m = 58, // number of samples per layer
-            stack = d3.layout.stack(),
-            layers = stack(d3.range(n).map(function() { return bumpLayer(m, .1); })),
-            yGroupMax = d3.max(layers, function(layer) { return d3.max(layer, function(d) { return d.y; }); }),
-            yStackMax = d3.max(layers, function(layer) { return d3.max(layer, function(d) { return d.y0 + d.y; }); });
+    var n, // number of layers
+        m, // number of samples per layer
+        stack = d3.layout.stack(),
+        layers,
+        yGroupMax,
+        yStackMax;
 
     function run() {
         var margin = {top: 40, right: 10, bottom: 20, left: 10},
                 width = 1400 - margin.left - margin.right,
                 height = 800 - margin.top - margin.bottom;
 
-        var x = d3.scale.ordinal()
-                .domain(d3.range(m))
-                .rangeRoundBands([0, width], .08);
+        var x = d3.time.scale()
+                .domain([commits[0].date, commits[commits.length-1].date])
+                .range([0, width], .08);
 
         var y = d3.scale.linear()
                 .domain([0, yStackMax])
@@ -159,23 +172,32 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
         var hoverModule = document.getElementById("hoverModule");
         var hoverCommit = document.getElementById("hoverCommit");
 
+        var help = "Hold space to prevent dragging while moving the mouse.";
+        var hover_disabled = false;
+        document.body.onkeydown = function(e){ if(e.keyCode = 32) hover_disabled = true; };
+        document.body.onkeyup = function(e){ if(e.keyCode = 32) hover_disabled = false; };
+
         var rect = layer.selectAll("rect")
                 .data(function (d) {
                     return d;
                 })
                 .enter().append("rect")
                 .attr("x", function (d) {
-                    return x(d.x);
+                    return x(d.date);
                 })
                 .attr("y", function (d) {
                     return y(d.y0 + d.y);
                 })
-                .attr("width", x.rangeBand())
+                .attr("width", function(d, i){
+                    return commits_reduced[i+1] ? x(commits_reduced[i+1].date) - x(d.date) : 5;
+                })
                 .attr("height", function (d) {
                     return Math.max(1, y(d.y0) - y(d.y0 + d.y));
                 })
                 .on('mouseover', function(d, commit_index, layer_index){
-                    commit_index-=1;
+                    if(hover_disabled) 
+                        return;
+
                     var module_name = modules[layer_index];
                     var changes = commits.slice(commit_index*limit-1, (commit_index+1)*limit);
                     var locs = changes.map(function(c){ return loc(c.sha, module_name); });
@@ -188,19 +210,22 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
                     else
                         hoverCommit.innerHTML = "Commits: <table>"+ 
                             changes.slice(1).map(function(commit, i){
-                                return "<tr><td>"+commit.sha.substr(0, 8) + "</td><td>"+
+                                return "<tr><td><a href='https://github.com/playframework/playframework/commit/"+commit.sha+"'>"+commit.sha.substr(0, 8) + "</a></td><td>"+date(commit.date)+"</td><td>"+
                                        (loc(commit.sha, module_name) - loc(changes[i].sha, module_name)) +
                                        "</td><td>" + shorten(commit.message, 50) + "</td></tr>";
                             })
-                            .reduce(function(){ return arguments[0] + "\n" + arguments[1]; }, "") + "</table>";
+                            .reduce(function(){ return arguments[0] + "\n" + arguments[1]; }, "") + "</table>"+help;
                     layer.transition().style("opacity", function(_d, i){
                         return i == layer_index ? 1 : 0.6;
                     });
                     rect.style("fill", function(_d, ci, li){
-                        return ci == commit_index+1 && layer_index == li ? "black" : color(li%20);
+                        return ci == commit_index && layer_index == li ? "black" : color(li%20);
                     });
                 })
                 .on('mouseout', function(){
+                    if(hover_disabled) 
+                        return;
+                    
                     layer.transition()
                         .style("opacity", 1)
                         .style("fill", function (d, i) {
@@ -208,10 +233,46 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
                         });
                 });
 
+        var lochist = commits.slice(1).map(function(c, i){
+            var p = commits[i];
+            var cur = objValues(metrics.modules[c.sha] || {}).reduce(function(p, m){ return p + m.loc; }, 0);
+            var prev= objValues(metrics.modules[p.sha] || {}).reduce(function(p, m){ return p + m.loc; }, 0);
+            return { y: cur - prev, x: c.date };
+        });
+
+        var histvals = lochist.map(function(l){ return l.y; });
+        var histscale = d3.scale.linear()
+                    .domain([d3.min(histvals), d3.max(histvals)])
+                    .range([0, 150])
+
+        var hist = svg.selectAll("rect.hist")
+                .data(lochist)
+            hist.enter()
+                .append("rect")
+                .classed("hist", true)
+            hist.attr("width", 2)
+                .attr("height", function(d,i) {
+                  return Math.abs(histscale(0) - histscale(d.y));
+                })
+                .attr("y", function(d) {
+                  return height + (d.y < 0 ? 0 : (histscale(0) - histscale(d.y)));
+                })
+                .style("fill-opacity", 1)
+                .style("fill", function(d){
+                    return d.y > 0 ? "#00ff00" : "#ff0000";
+                })
+                .attr("transform", function(d,i) {
+                    //console.log(tscale(new Date(d.joined)))
+                    //var x = i * 15
+                    var _x = x(d.x) + 2;
+                    var _y = 0;
+                    return "translate(" + [_x,_y] + ")";
+                });
+
         svg.append("g")
                 .attr("class", "x axis")
                 .attr("transform", "translate(0," + height + ")")
-                .call(xAxis);
+                .call(xAxis)
 
         var l = document.getElementById("loading");
         l.parentNode.removeChild(l);
@@ -220,6 +281,14 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
     function loc(sha, module_name){
         var c = metrics.modules[sha];
         return c && c[module_name] && c[module_name].loc || 0;
+    }
+
+    function objValues(obj){
+        return Object.keys(obj).map(function(k){ return obj[k]; });
+    }
+
+    function date(d){
+        return d.getFullYear() + "/" + (d.getMonth()+1) + "/" + d.getDate();
     }
 
     function shorten(s, l){
