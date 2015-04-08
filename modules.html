@@ -230,7 +230,7 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
                             commits_reduced[commit_index].sha.substr(0, 8) + " " +  
                             commits_reduced[commit_index].message;
                     else
-                        hoverCommit.innerHTML = "Commits: <table>"+ 
+                        hoverCommit.innerHTML = "Commits: <table><tr><th>Commit</th><th>Date</th><th>&Delta;</th><th>Message</th></tr>"+ 
                             changes.slice(1).map(function(commit, i){
                                 return "<tr><td><a href='https://github.com/playframework/playframework/commit/"+commit.sha+"'>"+commit.sha.substr(0, 8) + "</a></td><td>"+date(commit.date)+"</td><td>"+
                                        (loc(commit.sha, module_name) - loc(changes[i].sha, module_name)) +
