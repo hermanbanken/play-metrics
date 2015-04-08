@@ -217,26 +217,8 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
                     return Math.max(1, y(d.y0) - y(d.y0 + d.y));
                 })
                 .on('mouseover', function(d, commit_index, layer_index){
-                    if(hover_disabled) 
-                        return;
+                    highlight(commit_index, layer_index);
 
-                    var module_name = modules[layer_index];
-                    var changes = commits.slice(commit_index*limit-1, (commit_index+1)*limit);
-                    var locs = changes.map(function(c){ return loc(c.sha, module_name); });
-                    
-                    hoverModule.textContent = "Focus: "+ module_name + "; LOC: "+locs[0]+" -> "+locs.slice(-1)[0];
-                    if(window.limit < 2)
-                        hoverCommit.textContent = "Commit: "+ 
-                            commits_reduced[commit_index].sha.substr(0, 8) + " " +  
-                            commits_reduced[commit_index].message;
-                    else
-                        hoverCommit.innerHTML = "Commits: <table><tr><th>Commit</th><th>Date</th><th>&Delta;</th><th>Message</th></tr>"+ 
-                            changes.slice(1).map(function(commit, i){
-                                return "<tr><td><a href='https://github.com/playframework/playframework/commit/"+commit.sha+"'>"+commit.sha.substr(0, 8) + "</a></td><td>"+date(commit.date)+"</td><td>"+
-                                       (loc(commit.sha, module_name) - loc(changes[i].sha, module_name)) +
-                                       "</td><td>" + shorten(commit.message, 50) + "</td></tr>";
-                            })
-                            .reduce(function(){ return arguments[0] + "\n" + arguments[1]; }, "") + "</table>"+help;
                     layer.transition().style("opacity", function(_d, i){
                         return i == layer_index ? 1 : 0.6;
                     });
@@ -255,11 +237,44 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
                         });
                 });
 
+        function highlight(commit_index, layer_index){
+            if(hover_disabled) 
+                return;
+
+            if(typeof layer_index != 'undefined'){
+                var module_name = modules[layer_index];
+                var changes = commits.slice(commit_index*limit-1, (commit_index+1)*limit);
+                var locs = changes.map(function(c){ return loc(c.sha, module_name); });
+
+                hoverModule.textContent = "Focus: "+ module_name + "; LOC: "+locs[0]+" -> "+locs.slice(-1)[0];
+
+                if(window.limit < 2){
+                    hoverCommit.textContent = "Commit: <a href='https://github.com/playframework/playframework/commit/"+commits_reduced[commit_index].sha+"'>"+commits_reduced[commit_index].sha.substr(0, 8) + "</a> " + 
+                        commits_reduced[commit_index].message;
+                    return;
+                }                    
+            } else {
+                var changes = commits.slice(commit_index, commit_index+2);
+                var locs = changes.map(function(c){ return loc(c.sha, module_name); });
+                hoverModule.textContent = "LOC: "+locs[0]+" -> "+locs[1];
+            }
+
+            hoverCommit.innerHTML = "Commits: <table>"+
+                "<tr><th>Commit</th><th>Date</th><th>&Delta;</th><th>Message</th></tr>"+ 
+                changes.slice(1).map(function(commit, i){
+                    return "<tr><td><a href='https://github.com/playframework/playframework/commit/"+commit.sha+"'>"+commit.sha.substr(0, 8) + "</a></td><td>"+date(commit.date)+"</td><td>"+
+                           (loc(commit.sha, module_name) - loc(changes[i].sha, module_name)) +
+                           "</td><td>" + shorten(commit.message, 50) + "</td></tr>";
+                })
+                .reduce(function(){ return arguments[0] + "\n" + arguments[1]; }, "") + 
+                "</table>"+help;
+        }
+
         var lochist = commits.slice(1).map(function(c, i){
             var p = commits[i];
             var cur = objValues(metrics.modules[c.sha] || {}).reduce(function(p, m){ return p + m.loc; }, 0);
             var prev= objValues(metrics.modules[p.sha] || {}).reduce(function(p, m){ return p + m.loc; }, 0);
-            return { y: cur - prev, x: c.date };
+            return { y: cur - prev, x: c.date, commit_i: i };
         });
 
         var histvals = lochist.map(function(l){ return l.y; });
@@ -293,6 +308,12 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
                     var _x = x(d.x) + 2;
                     var _y = 0;
                     return "translate(" + [_x,_y] + ")";
+                })
+                .on('mouseover', function(d, commit_index, layer_index){
+                    highlight(d.commit_i);
+                    hist.style("fill", function(_d, ci){
+                        return ci == commit_index ? "black" : (_d.y > 0 ? "#00ff00" : "#ff0000");
+                    });
                 });
 
         svg.append("g")
@@ -309,8 +330,14 @@ Original, unmodified version of Stacked Bar Chart: http://bl.ocks.org/mbostock/r
     }
 
     function loc(sha, module_name){
-        var c = metrics.modules[sha];
-        return c && c[module_name] && c[module_name].loc || 0;
+        if(typeof module_name != 'undefined'){
+            var c = metrics.modules[sha];
+            return c && c[module_name] && c[module_name].loc || 0;
+        } else {
+            return Object.keys(metrics.modules[sha] || {}).reduce(function(p, k){ 
+                return p+metrics.modules[sha][k].loc;
+            }, 0);
+        }
     }
 
     function objValues(obj){
